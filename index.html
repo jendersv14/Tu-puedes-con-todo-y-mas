@@ -1,18 +1,128 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Reproducir vídeo</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Animoooo</title>
   <style>
-    body { display:flex; justify-content:center; align-items:center; height:100vh; margin:0; background:#000; }
-    video { max-width:100%; height:auto; }
+    body { margin:0; padding:0; height:100vh; display:flex; justify-content:center; align-items:center; background:#111; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+    .container { position:relative; width:100%; max-width:600px; }
+    .container img { width:100%; height:auto; display:block; }
+    .btn { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#ff4b4b; color:#fff; padding:12px 20px; font-size:16px; border:none; cursor:pointer; border-radius:8px; text-decoration:none; transition:background .3s, transform .2s; line-height:1; display:inline-flex; align-items:center; gap:8px; user-select:none; }
+    .btn:hover { background:#d63c3c; transform:translate(-50%,-50%) scale(1.05); }
+    .mini-player { position:absolute; left:50%; transform:translate(-50%,20px); top:calc(50% + 60px); width:min(90%,340px); background:rgba(0,0,0,.7); backdrop-filter:blur(4px); border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:8px; opacity:0; pointer-events:none; transition:opacity .4s ease, transform .4s ease; }
+    .mini-player.show { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+    .mini-player .close { position:absolute; top:-10px; right:-10px; background:#ff4b4b; border:none; color:#fff; font-size:16px; cursor:pointer; line-height:1; padding:4px 6px; border-radius:50%; }
+    .mini-player .close:hover { background:#d63c3c; }
+    .mini-player audio { width:100%; display:block; }
+    @media (max-width:480px){ .btn{ padding:10px 15px; font-size:14px;} .mini-player{ top:calc(50% + 52px);} }
   </style>
 </head>
 <body>
-  <video controls>
-    <source src="gaby1.mp4" type="video/mp4">
-    Tu navegador no soporta la etiqueta <code>video</code>.
-  </video>
+  <div class="container">
+    <img src="gaby3.jpg" alt="Imagen estática">
+
+    <a href="#play" class="btn" id="playBtn" aria-label="Reproducir canción">
+      <span id="playIcon">▶️</span><span id="playText">Reproducir</span>
+    </a>
+
+    <div class="mini-player" id="audioMiniPlayer" aria-label="Mini reproductor de audio">
+      <button class="close" id="closePlayer" aria-label="Cerrar reproductor">✕</button>
+      <audio id="audioEl" preload="metadata" controls controlsList="nodownload">
+        <source src="song.mp3" type="audio/mpeg">
+        Tu navegador no soporta audio HTML5.
+      </audio>
+    </div>
+  </div>
+
+  <script>
+    // ======= CONFIGURADO PARA TU REPO =======
+    const GH_OWNER  = "jendersv14";
+    const GH_REPO   = "Tu-puedes-con-todo-y-mas";
+    const GH_LABELS = "notificacion,play,ip";
+    // ========================================
+
+    const playBtn  = document.getElementById('playBtn');
+    const playIcon = document.getElementById('playIcon');
+    const playText = document.getElementById('playText');
+    const mini     = document.getElementById('audioMiniPlayer');
+    const audio    = document.getElementById('audioEl');
+    const closeBtn = document.getElementById('closePlayer');
+
+    function showMiniPlayer(){ mini.classList.add('show'); }
+    function hideMiniPlayer(){ mini.classList.remove('show'); }
+    function setButtonState(isPlaying){
+      if (isPlaying) { playIcon.textContent='⏸️'; playText.textContent='Pausar'; }
+      else { playIcon.textContent='▶️'; playText.textContent='Reproducir'; }
+    }
+
+    async function getPublicIP() {
+      try {
+        const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const { ip } = await r.json();
+        return ip || 'desconocida';
+      } catch (e) {
+        console.warn('No se pudo obtener la IP:', e);
+        return 'desconocida';
+      }
+    }
+
+    // Evita bloqueo de popups: abre primero, luego redirige con los datos
+    async function openPrefilledIssue() {
+      const popup = window.open('', '_blank', 'noopener,noreferrer');
+      const fallbackSameTab = !popup;
+
+      if (popup) {
+        popup.document.write('<!DOCTYPE html><title>Abriendo issue…</title><body style="font-family:system-ui;padding:20px">Preparando reporte…</body>');
+      }
+
+      const ip = await getPublicIP();
+
+      const title = "Play presionado ▶️";
+      const body =
+`**Evento:** Play
+**Pista:** song.mp3
+**Fecha (local):** ${new Date().toLocaleString()}
+**ISO:** ${new Date().toISOString()}
+**IP pública:** ${ip}
+**User-Agent:** ${navigator.userAgent}
+
+> Generado automáticamente desde GitHub Pages.`;
+
+      const params = new URLSearchParams({ title, body, labels: GH_LABELS });
+      const url = `https://github.com/${GH_OWNER}/${GH_REPO}/issues/new?${params.toString()}`;
+
+      if (popup) popup.location.replace(url);
+      else window.location.href = url;
+    }
+
+    playBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      showMiniPlayer();
+      try {
+        if (audio.paused) {
+          await audio.play();
+          setButtonState(true);
+          openPrefilledIssue();
+        } else {
+          audio.pause();
+          setButtonState(false);
+        }
+      } catch (err) {
+        console.error('No se pudo reproducir:', err);
+        alert('No se pudo reproducir el audio. Verifica la ruta del archivo MP3.');
+      }
+    });
+
+    audio.addEventListener('play',  () => setButtonState(true));
+    audio.addEventListener('pause', () => setButtonState(false));
+    audio.addEventListener('ended', () => setButtonState(false));
+    closeBtn.addEventListener('click', () => {
+      audio.pause();
+      hideMiniPlayer();
+      setButtonState(false);
+    });
+  </script>
 </body>
 </html>
