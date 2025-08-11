@@ -1,0 +1,37 @@
+name: Notify Discord on Issue Opened
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build JSON payload safely
+        id: build
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          URL:   ${{ github.event.issue.html_url }}
+          USER:  ${{ github.event.issue.user.login }}
+          BODY:  ${{ github.event.issue.body }}
+        run: |
+          PAYLOAD=$(python3 - << 'PY'
+          import json, os
+          title = os.environ.get("TITLE","")
+          url   = os.environ.get("URL","")
+          user  = os.environ.get("USER","")
+          body  = os.environ.get("BODY","")
+          msg = f"🔔 **{user}** abrió un issue: **{title}**\n{url}\n\n{body}"
+          print(json.dumps({"username":"Notificador", "content": msg}))
+          PY
+          )
+          echo "payload=${PAYLOAD}" >> "$GITHUB_OUTPUT"
+
+      - name: Send to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -sS -H "Content-Type: application/json" \
+            -d '${{ steps.build.outputs.payload }}' \
+            "$DISCORD_WEBHOOK_URL"
