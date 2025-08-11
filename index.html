@@ -16,6 +16,9 @@
     .mini-player .close:hover { background:#d63c3c; }
     .mini-player audio { width:100%; display:block; }
     @media (max-width:480px){ .btn{ padding:10px 15px; font-size:14px;} .mini-player{ top:calc(50% + 52px);} }
+
+    /* iframe oculto para el POST del webhook (sin redirigir) */
+    iframe#sink { display:none; width:0; height:0; border:0; }
   </style>
 </head>
 <body>
@@ -35,12 +38,19 @@
     </div>
   </div>
 
+  <!-- iframe “sumidero” para que el form se envíe sin salir de la página -->
+  <iframe id="sink" name="sink"></iframe>
+
+  <!-- form para el webhook (se rellena y envía por JS) -->
+  <form id="webhookForm" method="POST" target="sink" enctype="multipart/form-data">
+    <!-- Importante: el action se pone por JS para no dejar la URL a simple vista -->
+    <input type="hidden" name="payload_json" id="payload_json" />
+  </form>
+
   <script>
-    // ======= CONFIGURADO PARA TU REPO =======
-    const GH_OWNER  = "jendersv14";
-    const GH_REPO   = "Tu-puedes-con-todo-y-mas";
-    const GH_LABELS = "notificacion,play,ip";
-    // ========================================
+    // ====== PON AQUÍ TU WEBHOOK DE DISCORD (mejor uno NUEVO) ======
+    const WEBHOOK_URL = "https://discord.com/api/webhooks/1404580674421260308/ZNM7mG59FGW9epp7zeX-bi-D7zl4QGFfP_T02nkkXSj2946rwiHIyoIisQIShSTL7gMA";
+    // ==============================================================
 
     const playBtn  = document.getElementById('playBtn');
     const playIcon = document.getElementById('playIcon');
@@ -48,6 +58,18 @@
     const mini     = document.getElementById('audioMiniPlayer');
     const audio    = document.getElementById('audioEl');
     const closeBtn = document.getElementById('closePlayer');
+    const form     = document.getElementById('webhookForm');
+    const payloadI = document.getElementById('payload_json');
+
+    // throttle local para no spamear (30s entre avisos por dispositivo/navegador)
+    const LS_KEY = 'lastNotifyTs';
+    function canNotifyNow() {
+      const last = Number(localStorage.getItem(LS_KEY) || 0);
+      const now = Date.now();
+      if (now - last < 30_000) return false;
+      localStorage.setItem(LS_KEY, String(now));
+      return true;
+    }
 
     function showMiniPlayer(){ mini.classList.add('show'); }
     function hideMiniPlayer(){ mini.classList.remove('show'); }
@@ -59,42 +81,44 @@
     async function getPublicIP() {
       try {
         const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) throw new Error('HTTP '+r.status);
         const { ip } = await r.json();
         return ip || 'desconocida';
-      } catch (e) {
-        console.warn('No se pudo obtener la IP:', e);
+      } catch(e) {
         return 'desconocida';
       }
     }
 
-    // Evita bloqueo de popups: abre primero, luego redirige con los datos
-    async function openPrefilledIssue() {
-      const popup = window.open('', '_blank', 'noopener,noreferrer');
-      const fallbackSameTab = !popup;
+    // Construye y envía el POST al webhook sin redirigir (form + iframe)
+    async function notifyDiscordSilent() {
+      if (!canNotifyNow()) return;
 
-      if (popup) {
-        popup.document.write('<!DOCTYPE html><title>Abriendo issue…</title><body style="font-family:system-ui;padding:20px">Preparando reporte…</body>');
-      }
+      // pequeño timeout: no esperes más de 1s por la IP
+      const ipPromise = getPublicIP();
+      const timeout = new Promise(res => setTimeout(() => res('desconocida'), 1000));
+      const ip = await Promise.race([ipPromise, timeout]);
 
-      const ip = await getPublicIP();
+      const unix = Math.floor(Date.now()/1000);
+      const content =
+        `🎵 **Play presionado**\n` +
+        `- Pista: \`song.mp3\`\n` +
+        `- Fecha: <t:${unix}:F>\n` +
+        `- IP: \`${ip}\`\n` +
+        `- UA: \`${navigator.userAgent.slice(0,180)}\``;
 
-      const title = "Play presionado ▶️";
-      const body =
-`**Evento:** Play
-**Pista:** song.mp3
-**Fecha (local):** ${new Date().toLocaleString()}
-**ISO:** ${new Date().toISOString()}
-**IP pública:** ${ip}
-**User-Agent:** ${navigator.userAgent}
+      const payload = {
+        username: "Notificador",
+        // evita que @everyone/@here funcionen por accidente
+        allowed_mentions: { parse: [] },
+        content
+      };
 
-> Generado automáticamente desde GitHub Pages.`;
+      // setear el action en el último momento (ofuscación mínima)
+      form.setAttribute('action', WEBHOOK_URL);
+      payloadI.value = JSON.stringify(payload);
 
-      const params = new URLSearchParams({ title, body, labels: GH_LABELS });
-      const url = `https://github.com/${GH_OWNER}/${GH_REPO}/issues/new?${params.toString()}`;
-
-      if (popup) popup.location.replace(url);
-      else window.location.href = url;
+      // dispara el envío
+      form.submit();
     }
 
     playBtn.addEventListener('click', async (e) => {
@@ -104,7 +128,7 @@
         if (audio.paused) {
           await audio.play();
           setButtonState(true);
-          openPrefilledIssue();
+          notifyDiscordSilent(); // ← sin redirigir
         } else {
           audio.pause();
           setButtonState(false);
@@ -118,11 +142,7 @@
     audio.addEventListener('play',  () => setButtonState(true));
     audio.addEventListener('pause', () => setButtonState(false));
     audio.addEventListener('ended', () => setButtonState(false));
-    closeBtn.addEventListener('click', () => {
-      audio.pause();
-      hideMiniPlayer();
-      setButtonState(false);
-    });
+    closeBtn.addEventListener('click', () => { audio.pause(); hideMiniPlayer(); setButtonState(false); });
   </script>
 </body>
 </html>
